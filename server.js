@@ -10,23 +10,35 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 1. Sajikan seluruh isi folder public
+// Menyajikan file statis dari folder public
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Mengabaikan error sertifikat SSL jika ada
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
+// Header disesuaikan agar menyerupai browser Google Chrome asli (Mencegah Error 403)
 const defaultHeaders = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.9,id;q=0.8'
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+  'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+  'Cache-Control': 'no-cache',
+  'Pragma': 'no-cache',
+  'Sec-Ch-Ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
+  'Sec-Ch-Ua-Mobile': '?0',
+  'Sec-Ch-Ua-Platform': '"Windows"',
+  'Sec-Fetch-Dest': 'document',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Site': 'none',
+  'Sec-Fetch-User': '?1',
+  'Upgrade-Insecure-Requests': '1'
 };
 
-// 2. RUTE UTAMA (Menangani error Cannot GET /)
+// Rute Halaman Utama
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// 3. API CHECK LINK
+// API Endpoint Pengecekan Link & Footer
 app.post('/api/check-link', async (req, res) => {
   let { url } = req.body;
 
@@ -42,9 +54,17 @@ app.post('/api/check-link', async (req, res) => {
     const response = await axios.get(url, {
       maxRedirects: 5,
       headers: defaultHeaders,
-      timeout: 5000,
-      httpsAgent: httpsAgent
+      timeout: 8000,
+      httpsAgent: httpsAgent,
+      validateStatus: (status) => status < 500 // Izinkan menangkap status 403/404 tanpa throw exception
     });
+
+    if (response.status === 403) {
+      return res.status(403).json({
+        success: false,
+        error: 'Website target dilindungi oleh proteksi keamanan/Cloudflare sehingga menolak akses otomatis (Status 403 Forbidden).'
+      });
+    }
 
     const finalUrl = response.request.res.responseUrl || url;
     const isRedirected = url.toLowerCase() !== finalUrl.toLowerCase();
@@ -101,8 +121,10 @@ app.post('/api/check-link', async (req, res) => {
   }
 });
 
-// Listener untuk Render / Railway / Server Publik
+// Listener Port (Dukungan Render, Railway, Vercel & Lokal)
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server berjalan di port ${PORT}`);
 });
+
+module.exports = app;
